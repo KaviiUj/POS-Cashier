@@ -1,3 +1,1 @@
-// Middleware will be added here later
-export {};
-
+export { authenticateToken } from './auth.js';

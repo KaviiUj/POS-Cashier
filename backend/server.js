@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { connectDB } from './config/database.js';
 import { logger } from './utils/logger.js';
+import routes from './routes/index.js';
 
 // Load environment variables - .env file should be in backend directory
 dotenv.config();
@@ -40,7 +41,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// Routes will be added here later
+// API Routes
+app.use('/api', routes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
