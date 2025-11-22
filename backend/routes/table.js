@@ -127,5 +127,105 @@ router.get('/order', authenticateToken, async (req, res) => {
   }
 });
 
+// Settle order by table ID (requires authentication)
+router.patch('/settle', authenticateToken, async (req, res) => {
+  try {
+    const { tableId } = req.query;
+    const { paymentMethod } = req.body;
+
+    // Validate tableId
+    if (!tableId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Table ID is required as query parameter'
+      });
+    }
+
+    // Find table by ID
+    const table = await Table.findById(tableId);
+
+    if (!table) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Table not found'
+      });
+    }
+
+    // Check if table has an order
+    if (!table.orderId || table.orderId.trim() === '') {
+      return res.status(400).json({
+        status: 'error',
+        message: 'No order found for this table'
+      });
+    }
+
+    // Find order by orderNumber
+    const order = await Order.findOne({ orderNumber: table.orderId });
+
+    if (!order) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Order not found'
+      });
+    }
+
+    // Check if order is already settled
+    if (order.billIsSettle) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Order is already settled'
+      });
+    }
+
+    // Update order
+    order.billIsSettle = true;
+    order.paymentStatus = 'paid';
+    if (paymentMethod) {
+      order.paymentMethod = paymentMethod;
+    }
+    await order.save();
+
+    // Update table - make it available and clear orderId
+    table.isAvailable = true;
+    table.orderId = '';
+    table.sessionPin = '';
+    table.pinGeneratedAt = null;
+    table.customerId = null;
+    await table.save();
+
+    logger.info('Order settled successfully', {
+      userId: req.user.userId,
+      tableId: tableId,
+      orderNumber: order.orderNumber,
+      paymentMethod: order.paymentMethod
+    });
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Bill settled successfully',
+      data: {
+        order: order,
+        table: {
+          _id: table._id,
+          tableName: table.tableName,
+          isAvailable: table.isAvailable
+        }
+      }
+    });
+  } catch (error) {
+    logger.error('Settle order error', {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user?.userId,
+      tableId: req.query?.tableId
+    });
+
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to settle order. Please try again later.'
+    });
+  }
+});
+
 export default router;
 

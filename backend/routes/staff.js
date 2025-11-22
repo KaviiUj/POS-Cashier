@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { Staff, TokenBlacklist } from '../models/index.js';
 import { authenticateToken } from '../middleware/index.js';
 import { logger } from '../utils/logger.js';
+import { getJWTSecret } from '../utils/jwt.js';
 
 const router = express.Router();
 
@@ -56,9 +57,10 @@ router.post('/login', async (req, res) => {
       userType: 'Staff'
     };
 
+    const secret = getJWTSecret();
     const token = jwt.sign(
       tokenPayload,
-      process.env.JWT_SECRET || 'your-secret-key',
+      secret,
       { expiresIn: '12h' }
     );
 

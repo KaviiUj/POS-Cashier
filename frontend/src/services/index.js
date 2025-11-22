@@ -1,3 +1,3 @@
-// Services will be added here later
-export {};
-
+export { default as authService } from './authService'
+export { default as tableService } from './tableService'
+export { default as orderService } from './orderService'

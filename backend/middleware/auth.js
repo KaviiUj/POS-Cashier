@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { TokenBlacklist } from '../models/index.js';
 import { logger } from '../utils/logger.js';
+import { getJWTSecret } from '../utils/jwt.js';
 
 export const authenticateToken = async (req, res, next) => {
   try {
@@ -25,7 +26,8 @@ export const authenticateToken = async (req, res, next) => {
     }
 
     // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    const secret = getJWTSecret();
+    const decoded = jwt.verify(token, secret);
 
     // Attach user info to request
     req.user = decoded;
@@ -36,7 +38,7 @@ export const authenticateToken = async (req, res, next) => {
     if (error.name === 'JsonWebTokenError') {
       return res.status(401).json({
         status: 'error',
-        message: 'Invalid token'
+        message: 'Invalid token - signature verification failed. Please check if the token was signed with the correct secret.'
       });
     }
     if (error.name === 'TokenExpiredError') {
