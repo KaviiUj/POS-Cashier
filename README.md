@@ -42,12 +42,6 @@ POS-Cashier/
    
    **Backend** - Create `.env` file in `backend/` directory:
    ```
-   PORT=5002
-   MONGODB_URI=mongodb+srv://tech4gen:PJ48IIvsy0gUpRTW@pos.i5m97md.mongodb.net/pos
-   SECRET_KEY=cG9zQ2FoaWVyU2VjcmV0S2V5VGVjaDRnZW4=
-   NODE_ENV=development
-   LOG_LEVEL=info
-   ```
    
    **Frontend** - Create `.env` file in `frontend/` directory:
    ```
