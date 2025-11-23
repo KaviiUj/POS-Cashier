@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { AuthProvider, useAuth } from './context'
+import { AuthProvider, useAuth, SocketProvider } from './context'
 import { LoginScreen, TableScreen } from './screens'
 import { logger } from './utils/logger'
 
@@ -34,7 +34,9 @@ const AppContent = () => {
 function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <SocketProvider>
+        <AppContent />
+      </SocketProvider>
     </AuthProvider>
   )
 }

@@ -2,16 +2,35 @@ import React from 'react'
 import { Card, Badge } from '../ui'
 
 const TableCard = ({ table, onClick }) => {
-  const isAvailable = table.isAvailable
-  const statusColor = isAvailable ? 'green' : 'red'
-  const statusText = isAvailable ? 'Available' : 'Occupied'
-  const badgeVariant = isAvailable ? 'success' : 'danger'
+  // Determine table state: Available, PIN Available, or Occupied
+  const hasOrderId = table.orderId && table.orderId.trim() !== ''
+  const hasSessionPin = table.sessionPin && table.sessionPin.trim() !== ''
+  
+  let statusColor = 'green'
+  let statusText = 'Available'
+  let badgeVariant = 'success'
+  let borderColor = 'border-green-500'
+  
+  if (hasOrderId) {
+    // Occupied - has order
+    statusColor = 'red'
+    statusText = 'Occupied'
+    badgeVariant = 'danger'
+    borderColor = 'border-red-500'
+  } else if (hasSessionPin) {
+    // PIN Available - has PIN but no order yet
+    statusColor = 'orange'
+    statusText = 'PIN Available'
+    badgeVariant = 'orange'
+    borderColor = 'border-orange-500'
+  }
+  // else: Available (default)
   
   return (
     <Card
       className={`
         cursor-pointer transition-all duration-200 hover:shadow-lg
-        border-2 ${isAvailable ? 'border-green-500' : 'border-red-500'}
+        border-2 ${borderColor}
         ${onClick ? 'hover:scale-105' : ''}
       `}
       onClick={onClick}
@@ -33,11 +52,20 @@ const TableCard = ({ table, onClick }) => {
           </Badge>
         </div>
         
-        {!isAvailable && table.orderId && table.orderId.trim() !== '' && (
+        {hasSessionPin && !hasOrderId && (
           <div className="mt-3 text-center">
-            <p className="text-xs text-gray-500">Order ID:</p>
+            <p className="text-xs text-gray-500">PIN:</p>
+            <p className="text-sm font-semibold text-orange-700">
+              {table.sessionPin}
+            </p>
+          </div>
+        )}
+        
+        {hasOrderId && (
+          <div className="mt-3 text-center">
+            <p className="text-xs text-gray-500">Order:</p>
             <p className="text-sm font-semibold text-gray-700 break-all">
-              {table.orderId}
+              {table.orderNumber || table.orderId}
             </p>
           </div>
         )}

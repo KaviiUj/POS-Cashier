@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react'
 import { TableCard } from '../components/table'
 import { OrderDetails } from '../components/order'
 import { Button } from '../components/ui'
-import { useAuth } from '../context'
+import { useAuth, useSocket } from '../context'
 import { tableService, orderService } from '../services'
 import { logger } from '../utils/logger'
 
 const TableScreen = () => {
   const { staff, logout } = useAuth()
+  const { connectionStatus, onPinGenerated, onOrderCreated, reconnect } = useSocket()
   const [tables, setTables] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -16,10 +17,13 @@ const TableScreen = () => {
   const [orderLoading, setOrderLoading] = useState(false)
   const [orderError, setOrderError] = useState(null)
   const [settleLoading, setSettleLoading] = useState(false)
+  const [notifications, setNotifications] = useState([])
 
-  const fetchTables = async () => {
+  const fetchTables = async (silent = false) => {
     try {
-      setLoading(true)
+      if (!silent) {
+        setLoading(true)
+      }
       setError(null)
       
       const response = await tableService.getTables()
@@ -31,10 +35,14 @@ const TableScreen = () => {
         throw new Error(response.message || 'Failed to fetch tables')
       }
     } catch (err) {
-      setError(err.message || 'An error occurred while fetching tables')
+      if (!silent) {
+        setError(err.message || 'An error occurred while fetching tables')
+      }
       logger.logError(err, { context: 'TableScreen.fetchTables' })
     } finally {
-      setLoading(false)
+      if (!silent) {
+        setLoading(false)
+      }
     }
   }
 
@@ -62,6 +70,115 @@ const TableScreen = () => {
     }
   }
 
+  // Show notification temporarily
+  const showNotification = (message, type = 'info') => {
+    const id = Date.now()
+    setNotifications((prev) => [...prev, { id, message, type }])
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+      setNotifications((prev) => prev.filter((n) => n.id !== id))
+    }, 5000)
+  }
+
+  // Handle PIN generated event
+  useEffect(() => {
+    const unsubscribe = onPinGenerated((eventData) => {
+      logger.info('PIN generated event received', eventData)
+      const { tableId, tableName, sessionPin, customerMobileNumber } = eventData.data
+
+      // Show notification
+      showNotification(
+        `PIN for ${tableName}: ${sessionPin} (Customer: ${customerMobileNumber})`,
+        'success'
+      )
+
+      // Update table status - add sessionPin (will show as "PIN Available" - orange)
+      setTables((prevTables) =>
+        prevTables.map((table) =>
+          table._id === tableId
+            ? { ...table, sessionPin, isAvailable: false }
+            : table
+        )
+      )
+
+      // Refresh tables to get latest data
+      fetchTables()
+    })
+
+    return unsubscribe
+  }, [onPinGenerated])
+
+  // Handle order created event
+  useEffect(() => {
+    const unsubscribe = onOrderCreated((eventData) => {
+      logger.info('Order created event received', eventData)
+      const order = eventData.data
+
+      // Show notification
+      const message = order.isUpdate
+        ? `Order ${order.orderNumber} updated - Items added`
+        : `New order ${order.orderNumber} from ${order.tableName || 'Customer'}`
+      
+      showNotification(message, 'success')
+
+      // If order has a table, update table status - set orderId (will show as "Occupied" - red)
+      if (order.tableId) {
+        logger.info('Updating table with order', { 
+          orderTableId: order.tableId, 
+          orderNumber: order.orderNumber 
+        })
+        
+        setTables((prevTables) => {
+          const updated = prevTables.map((table) => {
+            // Compare as strings to handle ObjectId vs string comparison
+            const tableIdStr = String(table._id)
+            const orderTableIdStr = String(order.tableId)
+            
+            if (tableIdStr === orderTableIdStr) {
+              return { 
+                ...table, 
+                isAvailable: false, 
+                orderId: order.orderId || order.orderNumber,
+                orderNumber: order.orderNumber,
+                // Keep sessionPin if it exists
+                sessionPin: table.sessionPin || ''
+              }
+            }
+            return table
+          })
+          logger.info('Table state updated', { 
+            tablesCount: updated.length,
+            foundTable: updated.some(t => String(t._id) === String(order.tableId))
+          })
+          return updated
+        })
+
+        // Refresh tables after a delay to sync with API (silent mode to avoid flicker)
+        // This allows the local update to be visible immediately
+        setTimeout(() => {
+          fetchTables(true) // Silent refresh - no loading state
+        }, 2000)
+      } else {
+        // No table associated, still refresh after delay (silent)
+        setTimeout(() => {
+          fetchTables(true) // Silent refresh - no loading state
+        }, 2000)
+      }
+
+      // If the order is for the currently selected table, fetch the order details
+      if (selectedTable) {
+        const selectedTableIdStr = String(selectedTable._id)
+        const orderTableIdStr = String(order.tableId)
+        if (selectedTableIdStr === orderTableIdStr) {
+          fetchOrder(order.tableId)
+        }
+      }
+    })
+
+    return unsubscribe
+  }, [onOrderCreated, selectedTable])
+
   useEffect(() => {
     fetchTables()
     logger.logPageView('TableScreen')
@@ -71,11 +188,15 @@ const TableScreen = () => {
     logger.logUserAction('table_click', { 
       tableId: table._id, 
       tableName: table.tableName,
-      isAvailable: table.isAvailable 
+      isAvailable: table.isAvailable,
+      hasOrderId: !!(table.orderId && table.orderId.trim() !== ''),
+      hasSessionPin: !!(table.sessionPin && table.sessionPin.trim() !== '')
     })
     
     setSelectedTable(table)
-    if (!table.isAvailable) {
+    // Only fetch order if table has an orderId (occupied state)
+    const hasOrderId = table.orderId && table.orderId.trim() !== ''
+    if (hasOrderId) {
       fetchOrder(table._id)
     } else {
       setOrder(null)
@@ -165,6 +286,31 @@ const TableScreen = () => {
               <p className="text-sm text-gray-600 mt-1">
                 Welcome, {staff?.staffName || 'User'}
               </p>
+              {/* Connection Status */}
+              <div className="flex items-center gap-2 mt-1">
+                <div
+                  className={`w-2 h-2 rounded-full ${
+                    connectionStatus.isConnected
+                      ? 'bg-green-500'
+                      : 'bg-red-500'
+                  }`}
+                />
+                <span className="text-xs text-gray-500">
+                  {connectionStatus.isConnected
+                    ? 'Connected to POS Mobile'
+                    : 'Disconnected - Real-time updates unavailable'}
+                </span>
+                {!connectionStatus.isConnected && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={reconnect}
+                    className="ml-2 text-xs"
+                  >
+                    Reconnect
+                  </Button>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-4">
               <Button
@@ -185,6 +331,38 @@ const TableScreen = () => {
           </div>
         </div>
       </div>
+
+      {/* Notifications */}
+      {notifications.length > 0 && (
+        <div className="fixed top-4 right-4 z-50 space-y-2">
+          {notifications.map((notification) => (
+            <div
+              key={notification.id}
+              className={`px-4 py-3 rounded-lg shadow-lg max-w-sm animate-fade-in ${
+                notification.type === 'success'
+                  ? 'bg-green-50 border border-green-200 text-green-800'
+                  : notification.type === 'error'
+                  ? 'bg-red-50 border border-red-200 text-red-800'
+                  : 'bg-blue-50 border border-blue-200 text-blue-800'
+              }`}
+            >
+              <div className="flex items-start justify-between">
+                <p className="text-sm font-medium">{notification.message}</p>
+                <button
+                  onClick={() =>
+                    setNotifications((prev) =>
+                      prev.filter((n) => n.id !== notification.id)
+                    )
+                  }
+                  className="ml-2 text-gray-400 hover:text-gray-600"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Main Content - Split Layout */}
       <div className="flex-1 flex overflow-hidden min-h-0">
