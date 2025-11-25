@@ -1,6 +1,12 @@
 import mongoose from 'mongoose';
 
 const staffSchema = new mongoose.Schema({
+  restaurantCode: {
+    type: String,
+    required: true,
+    trim: true,
+    index: true
+  },
   staffName: {
     type: String,
     required: true,

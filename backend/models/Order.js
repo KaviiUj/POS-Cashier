@@ -1,6 +1,12 @@
 import mongoose from 'mongoose';
 
 const orderSchema = new mongoose.Schema({
+  restaurantCode: {
+    type: String,
+    required: true,
+    trim: true,
+    index: true
+  },
   cartId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Cart',

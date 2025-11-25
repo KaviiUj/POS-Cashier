@@ -1,6 +1,12 @@
 import mongoose from 'mongoose';
 
 const tokenBlacklistSchema = new mongoose.Schema({
+  restaurantCode: {
+    type: String,
+    required: true,
+    trim: true,
+    index: true
+  },
   token: {
     type: String,
     required: true,

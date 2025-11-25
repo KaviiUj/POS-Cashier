@@ -1,6 +1,12 @@
 import mongoose from 'mongoose';
 
 const tableSchema = new mongoose.Schema({
+  restaurantCode: {
+    type: String,
+    required: true,
+    trim: true,
+    index: true
+  },
   tableName: {
     type: String,
     required: true,
